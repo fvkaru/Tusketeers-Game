@@ -14,6 +14,7 @@ public class TuskFlight : MonoBehaviour
     [Header("References")]
     [SerializeField] private TuskMovement movement;
     [SerializeField] private ParticleSystem flyingSteam;
+    [SerializeField] private TuskAudio audio;
 
     public bool IsFlying { get; private set; }
 
@@ -51,7 +52,16 @@ public class TuskFlight : MonoBehaviour
     {
         if (controller.isGrounded)
         {
-            IsFlying = false;
+            if (IsFlying)
+            {
+                IsFlying = false;
+
+                if (audio != null)
+                {
+                    audio.StopFlying();
+                }
+            }
+
             currentLift = startingLift;
 
             canStartFlying = false;
@@ -74,6 +84,11 @@ public class TuskFlight : MonoBehaviour
         {
             IsFlying = true;
             spaceWasReleased = false;
+
+            if (audio != null)
+            {
+                audio.PlayFlying();
+            }
         }
 
         if (IsFlying)
@@ -94,6 +109,11 @@ public class TuskFlight : MonoBehaviour
         {
             IsFlying = false;
             currentLift = startingLift;
+
+            if (audio != null)
+            {
+                audio.StopFlying();
+            }
         }
 
         UpdateSteam();

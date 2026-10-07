@@ -30,6 +30,7 @@ public class TuskMovement : MonoBehaviour
     [SerializeField] private TuskDash dash;
     [SerializeField] private TuskFlight flight;
     [SerializeField] private TuskAFK afk;
+    [SerializeField] private TuskAudio audio;
     [SerializeField] private float modelRotationOffset = 0f;
 
     public Vector3 MovementDirection { get; private set; }
@@ -47,8 +48,11 @@ public class TuskMovement : MonoBehaviour
     private int bunnyHopCount;
 
     private bool isJumping;
-
     private bool wasGrounded;
+    private bool wasFalling;
+    private bool wasRunning;
+    private bool wasIdle;
+    private bool wasAFK;
 
     private void Awake()
     {
@@ -175,6 +179,45 @@ public class TuskMovement : MonoBehaviour
 
             isJumping = true;
 
+            // STOP RUNNING
+            if (wasRunning)
+            {
+                if (audio != null)
+                {
+                    audio.StopRunning();
+                }
+
+                wasRunning = false;
+            }
+
+            // STOP IDLE
+            if (wasIdle)
+            {
+                if (audio != null)
+                {
+                    audio.StopIdle();
+                }
+
+                wasIdle = false;
+            }
+
+            // STOP AFK
+            if (wasAFK)
+            {
+                if (audio != null)
+                {
+                    audio.StopAFK();
+                }
+
+                wasAFK = false;
+            }
+
+            // JUMP SOUND
+            if (audio != null)
+            {
+                audio.PlayJump();
+            }
+
             coyoteTimer = 0f;
             bunnyHopTimer = bunnyHopResetTime;
 
@@ -268,14 +311,120 @@ public class TuskMovement : MonoBehaviour
             finalMovement * Time.deltaTime
         );
 
-        // LANDING DUST
+        // GROUND CHECK
         bool grounded = controller.isGrounded;
 
+        // FALLING
+        bool falling =
+            !grounded &&
+            !isJumping &&
+            verticalVelocity < 0f &&
+            (flight == null || !flight.IsFlying);
+
+        if (falling && !wasFalling)
+        {
+            if (audio != null)
+            {
+                audio.PlayFalling();
+            }
+        }
+
+        if (!falling && wasFalling)
+        {
+            if (audio != null)
+            {
+                audio.StopFalling();
+            }
+        }
+
+        wasFalling = falling;
+
+        // RUNNING
+        bool running =
+            grounded &&
+            input.sqrMagnitude > 0.01f &&
+            !isJumping &&
+            (flight == null || !flight.IsFlying);
+
+        if (running && !wasRunning)
+        {
+            if (audio != null)
+            {
+                audio.PlayRunning();
+            }
+        }
+
+        if (!running && wasRunning)
+        {
+            if (audio != null)
+            {
+                audio.StopRunning();
+            }
+        }
+
+        wasRunning = running;
+
+        // IDLE
+        bool idle =
+            grounded &&
+            input.sqrMagnitude < 0.01f &&
+            !isJumping &&
+            !falling &&
+            (flight == null || !flight.IsFlying) &&
+            (afk == null || !afk.IsAFK);
+
+        if (idle && !wasIdle)
+        {
+            if (audio != null)
+            {
+                audio.PlayIdle();
+            }
+        }
+
+        if (!idle && wasIdle)
+        {
+            if (audio != null)
+            {
+                audio.StopIdle();
+            }
+        }
+
+        wasIdle = idle;
+
+        // AFK
+        bool isAFK =
+            afk != null &&
+            afk.IsAFK;
+
+        if (isAFK && !wasAFK)
+        {
+            if (audio != null)
+            {
+                audio.PlayAFK();
+            }
+        }
+
+        if (!isAFK && wasAFK)
+        {
+            if (audio != null)
+            {
+                audio.StopAFK();
+            }
+        }
+
+        wasAFK = isAFK;
+
+        // LANDING DUST + SOUND
         if (!wasGrounded && grounded)
         {
             if (landingDust != null)
             {
                 landingDust.Play();
+            }
+
+            if (audio != null)
+            {
+                audio.PlayLanding();
             }
         }
 

@@ -19,6 +19,7 @@ public class TuskDash : MonoBehaviour
     [SerializeField] private Transform visualTransform;
     [SerializeField] private Animator animator;
     [SerializeField] private TuskAFK afk;
+    [SerializeField] private TuskAudio audio;
 
     public float SpeedBonus { get; private set; }
 
@@ -99,7 +100,6 @@ public class TuskDash : MonoBehaviour
 
     private void StartDash()
     {
-        // PLAYER ACTIVITY - RESET AFK
         afk.ResetAFK();
 
         isDashing = true;
@@ -114,5 +114,11 @@ public class TuskDash : MonoBehaviour
         }
 
         animator.SetBool("IsDashing", true);
+
+        // DASH SOUND
+        if (audio != null)
+        {
+            audio.PlayDash();
+        }
     }
 }
