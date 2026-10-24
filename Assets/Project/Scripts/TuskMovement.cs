@@ -1,3 +1,4 @@
+
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -24,6 +25,7 @@ public class TuskMovement : MonoBehaviour
     [SerializeField] private InputActionReference jumpAction;
     [SerializeField] private Animator animator;
     [SerializeField] private Transform visualTransform;
+    [SerializeField] private Transform cameraTransform;
     [SerializeField] private ParticleSystem runningDust;
     [SerializeField] private ParticleSystem jumpDust;
     [SerializeField] private ParticleSystem landingDust;
@@ -41,9 +43,7 @@ public class TuskMovement : MonoBehaviour
     private float verticalVelocity;
     private float coyoteTimer;
     private float jumpHoldTimer;
-
     private float currentHorizontalSpeed;
-
     private float bunnyHopTimer;
     private int bunnyHopCount;
 
@@ -81,8 +81,31 @@ public class TuskMovement : MonoBehaviour
     private void Update()
     {
         Vector2 input = moveAction.action.ReadValue<Vector2>();
+        input = Vector2.ClampMagnitude(input, 1f);
 
-        Vector3 movement = new Vector3(input.x, 0f, input.y);
+        // CAMERA-RELATIVE MOVEMENT
+        Transform camTransform = cameraTransform != null
+            ? cameraTransform
+            : (Camera.main != null ? Camera.main.transform : null);
+
+        Vector3 cameraForward = camTransform != null
+            ? camTransform.forward
+            : Vector3.forward;
+
+        Vector3 cameraRight = camTransform != null
+            ? camTransform.right
+            : Vector3.right;
+
+        cameraForward.y = 0f;
+        cameraRight.y = 0f;
+
+        cameraForward.Normalize();
+        cameraRight.Normalize();
+
+        Vector3 movement =
+            cameraRight * input.x +
+            cameraForward * input.y;
+
         movement = Vector3.ClampMagnitude(movement, 1f);
 
         MovementDirection = movement;
@@ -90,10 +113,13 @@ public class TuskMovement : MonoBehaviour
         // AFK RESET - MOVEMENT
         if (input.sqrMagnitude > 0.01f)
         {
-            afk.ResetAFK();
+            if (afk != null)
+            {
+                afk.ResetAFK();
+            }
         }
 
-        // FACE MOVEMENT DIRECTION
+        // FACE MOVEMENT DIRECTION - 8 DIRECTIONS
         if (movement.sqrMagnitude > 0.01f)
         {
             float angle =
@@ -102,12 +128,11 @@ public class TuskMovement : MonoBehaviour
             float snappedAngle =
                 Mathf.Round(angle / 45f) * 45f;
 
-            visualTransform.rotation =
-                Quaternion.Euler(
-                    0f,
-                    snappedAngle + modelRotationOffset,
-                    0f
-                );
+            visualTransform.rotation = Quaternion.Euler(
+                0f,
+                snappedAngle + modelRotationOffset,
+                0f
+            );
         }
 
         // COYOTE TIME
@@ -141,7 +166,10 @@ public class TuskMovement : MonoBehaviour
         if (jumpAction.action.WasPressedThisFrame() &&
             coyoteTimer > 0f)
         {
-            afk.ResetAFK();
+            if (afk != null)
+            {
+                afk.ResetAFK();
+            }
 
             bunnyHopCount++;
 
@@ -165,54 +193,36 @@ public class TuskMovement : MonoBehaviour
                 float desiredSpeed =
                     moveSpeed * jumpSpeedMultiplier;
 
-                currentHorizontalSpeed =
-                    Mathf.Max(
-                        currentHorizontalSpeed,
-                        desiredSpeed
-                    );
+                currentHorizontalSpeed = Mathf.Max(
+                    currentHorizontalSpeed,
+                    desiredSpeed
+                );
             }
 
             verticalVelocity =
                 Mathf.Sqrt(jumpHeight * -2f * gravity);
 
             jumpHoldTimer = 0f;
-
             isJumping = true;
 
-            // STOP RUNNING
             if (wasRunning)
             {
-                if (audio != null)
-                {
-                    audio.StopRunning();
-                }
-
+                if (audio != null) audio.StopRunning();
                 wasRunning = false;
             }
 
-            // STOP IDLE
             if (wasIdle)
             {
-                if (audio != null)
-                {
-                    audio.StopIdle();
-                }
-
+                if (audio != null) audio.StopIdle();
                 wasIdle = false;
             }
 
-            // STOP AFK
             if (wasAFK)
             {
-                if (audio != null)
-                {
-                    audio.StopAFK();
-                }
-
+                if (audio != null) audio.StopAFK();
                 wasAFK = false;
             }
 
-            // JUMP SOUND
             if (audio != null)
             {
                 audio.PlayJump();
@@ -221,7 +231,6 @@ public class TuskMovement : MonoBehaviour
             coyoteTimer = 0f;
             bunnyHopTimer = bunnyHopResetTime;
 
-            // JUMP DUST
             if (jumpDust != null)
             {
                 jumpDust.Play();
@@ -235,9 +244,7 @@ public class TuskMovement : MonoBehaviour
             verticalVelocity > 0f)
         {
             jumpHoldTimer += Time.deltaTime;
-
-            verticalVelocity +=
-                -gravity * Time.deltaTime * 0.5f;
+            verticalVelocity += -gravity * Time.deltaTime * 0.5f;
         }
 
         // RELEASE JUMP EARLY
@@ -254,33 +261,30 @@ public class TuskMovement : MonoBehaviour
             isJumping = false;
         }
 
-        // HORIZONTAL MOVEMENT
+        // HORIZONTAL SPEED
         if (movement.sqrMagnitude > 0.01f)
         {
-            float speedLimit =
-                moveSpeed + dash.SpeedBonus;
+            float speedLimit = moveSpeed +
+                (dash != null ? dash.SpeedBonus : 0f);
 
-            float targetSpeed =
-                Mathf.Max(
-                    speedLimit,
-                    currentHorizontalSpeed
-                );
+            float targetSpeed = Mathf.Max(
+                speedLimit,
+                currentHorizontalSpeed
+            );
 
-            currentHorizontalSpeed =
-                Mathf.MoveTowards(
-                    currentHorizontalSpeed,
-                    targetSpeed,
-                    acceleration * Time.deltaTime
-                );
+            currentHorizontalSpeed = Mathf.MoveTowards(
+                currentHorizontalSpeed,
+                targetSpeed,
+                acceleration * Time.deltaTime
+            );
         }
         else
         {
-            currentHorizontalSpeed =
-                Mathf.MoveTowards(
-                    currentHorizontalSpeed,
-                    0f,
-                    acceleration * 2f * Time.deltaTime
-                );
+            currentHorizontalSpeed = Mathf.MoveTowards(
+                currentHorizontalSpeed,
+                0f,
+                acceleration * 2f * Time.deltaTime
+            );
         }
 
         // GRAVITY / FLIGHT
@@ -291,8 +295,7 @@ public class TuskMovement : MonoBehaviour
         }
         else
         {
-            if (controller.isGrounded &&
-                verticalVelocity < 0f)
+            if (controller.isGrounded && verticalVelocity < 0f)
             {
                 verticalVelocity = -2f;
                 isJumping = false;
@@ -302,14 +305,10 @@ public class TuskMovement : MonoBehaviour
         }
 
         // FINAL MOVEMENT
-        Vector3 finalMovement =
-            movement * currentHorizontalSpeed;
-
+        Vector3 finalMovement = movement * currentHorizontalSpeed;
         finalMovement.y = verticalVelocity;
 
-        controller.Move(
-            finalMovement * Time.deltaTime
-        );
+        controller.Move(finalMovement * Time.deltaTime);
 
         // GROUND CHECK
         bool grounded = controller.isGrounded;
@@ -323,18 +322,12 @@ public class TuskMovement : MonoBehaviour
 
         if (falling && !wasFalling)
         {
-            if (audio != null)
-            {
-                audio.PlayFalling();
-            }
+            if (audio != null) audio.PlayFalling();
         }
 
         if (!falling && wasFalling)
         {
-            if (audio != null)
-            {
-                audio.StopFalling();
-            }
+            if (audio != null) audio.StopFalling();
         }
 
         wasFalling = falling;
@@ -348,18 +341,12 @@ public class TuskMovement : MonoBehaviour
 
         if (running && !wasRunning)
         {
-            if (audio != null)
-            {
-                audio.PlayRunning();
-            }
+            if (audio != null) audio.PlayRunning();
         }
 
         if (!running && wasRunning)
         {
-            if (audio != null)
-            {
-                audio.StopRunning();
-            }
+            if (audio != null) audio.StopRunning();
         }
 
         wasRunning = running;
@@ -375,41 +362,27 @@ public class TuskMovement : MonoBehaviour
 
         if (idle && !wasIdle)
         {
-            if (audio != null)
-            {
-                audio.PlayIdle();
-            }
+            if (audio != null) audio.PlayIdle();
         }
 
         if (!idle && wasIdle)
         {
-            if (audio != null)
-            {
-                audio.StopIdle();
-            }
+            if (audio != null) audio.StopIdle();
         }
 
         wasIdle = idle;
 
         // AFK
-        bool isAFK =
-            afk != null &&
-            afk.IsAFK;
+        bool isAFK = afk != null && afk.IsAFK;
 
         if (isAFK && !wasAFK)
         {
-            if (audio != null)
-            {
-                audio.PlayAFK();
-            }
+            if (audio != null) audio.PlayAFK();
         }
 
         if (!isAFK && wasAFK)
         {
-            if (audio != null)
-            {
-                audio.StopAFK();
-            }
+            if (audio != null) audio.StopAFK();
         }
 
         wasAFK = isAFK;
@@ -417,51 +390,30 @@ public class TuskMovement : MonoBehaviour
         // LANDING DUST + SOUND
         if (!wasGrounded && grounded)
         {
-            if (landingDust != null)
-            {
-                landingDust.Play();
-            }
-
-            if (audio != null)
-            {
-                audio.PlayLanding();
-            }
+            if (landingDust != null) landingDust.Play();
+            if (audio != null) audio.PlayLanding();
         }
 
         wasGrounded = grounded;
 
         // ANIMATOR
-        animator.SetFloat(
-            "Speed",
-            input.magnitude
-        );
-
-        animator.SetBool(
-            "IsGrounded",
-            grounded
-        );
-
-        animator.SetBool(
-            "IsJumping",
-            isJumping
-        );
-
-        animator.SetBool(
-            "IsFlying",
-            flight != null && flight.IsFlying
-        );
-
-        animator.SetBool(
-            "IsAFK",
-            afk != null && afk.IsAFK
-        );
+        if (animator != null)
+        {
+            animator.SetFloat("Speed", input.magnitude);
+            animator.SetBool("IsGrounded", grounded);
+            animator.SetBool("IsJumping", isJumping);
+            animator.SetBool(
+                "IsFlying",
+                flight != null && flight.IsFlying
+            );
+            animator.SetBool("IsAFK", afk != null && afk.IsAFK);
+        }
 
         // RUNNING DUST
         if (runningDust != null)
         {
             dustEmission.enabled =
-                grounded &&
-                input.sqrMagnitude > 0.01f;
+                grounded && input.sqrMagnitude > 0.01f;
         }
     }
 }

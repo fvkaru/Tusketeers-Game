@@ -569,11 +569,11 @@ Camera:
     y: 0
     width: 1
     height: 1
-  near clip plane: 0
+  near clip plane: 0.01
   far clip plane: 600
-  field of view: 60
-  orthographic: 1
-  orthographic size: 6
+  field of view: 50
+  orthographic: 0
+  orthographic size: 8
   m_Depth: 0
   m_CullingMask:
     serializedVersion: 2
@@ -597,13 +597,13 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 293000544}
   serializedVersion: 2
-  m_LocalRotation: {x: 0.30070576, y: 0, z: 0, w: 0.953717}
-  m_LocalPosition: {x: -0.04, y: 13.63, z: -17.34}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 10, z: -20}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 35, y: 0, z: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!114 &293000549
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -617,12 +617,26 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CameraFollow
   target: {fileID: 463357009}
-  playerMovement: {fileID: 1966886588}
-  afk: {fileID: 1966886591}
-  lookAheadDistance: 2
-  lookAheadSmoothness: 1
-  afkZoomSize: 3
-  afkZoomSpeed: 2
+  targetHeight: 1.2
+  lookAction: {fileID: 7115422500095068909, guid: 3c40a9a3fa318a444aab76bdb4723b0f, type: 3}
+  zoomAction: {fileID: -8597168355914469817, guid: 3c40a9a3fa318a444aab76bdb4723b0f, type: 3}
+  mouseSensitivity: 0.22
+  horizontalSpeedLimit: 340
+  verticalSpeedLimit: 240
+  minimumPitch: -10
+  maximumPitch: 60
+  followSmoothness: 15
+  distance: 12
+  minimumDistance: 8
+  maximumDistance: 16
+  zoomSensitivity: 60
+  zoomSmoothness: 8
+  collisionLayers:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  collisionRadius: 0.25
+  collisionPadding: 0.15
+  collisionSmoothness: 20
 --- !u!81 &293000550
 AudioListener:
   m_ObjectHideFlags: 0
@@ -3289,6 +3303,7 @@ MonoBehaviour:
   jumpAction: {fileID: 6173109053164833477, guid: 3c40a9a3fa318a444aab76bdb4723b0f, type: 3}
   animator: {fileID: 1837627332}
   visualTransform: {fileID: 1837627331}
+  cameraTransform: {fileID: 293000548}
   runningDust: {fileID: 2004445459}
   jumpDust: {fileID: 1931648882}
   landingDust: {fileID: 317403102}
