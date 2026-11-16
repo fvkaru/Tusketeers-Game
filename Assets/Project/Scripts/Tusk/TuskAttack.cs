@@ -83,6 +83,9 @@ public class TuskAttack : MonoBehaviour
     /// <summary>True from the start to the end of a swing.</summary>
     public bool IsAttacking { get; private set; }
 
+    /// <summary>Raised for every enemy this attack hits (the enemy health bar uses it).</summary>
+    public event System.Action<SteamKnockback> HitLanded;
+
     private void Awake()
     {
         if (movement == null)
@@ -250,7 +253,10 @@ public class TuskAttack : MonoBehaviour
             alreadyHit.Add(target);
 
             if (target.ApplyHit(toTarget, steamDamage))
+            {
                 hitAnything = true;
+                HitLanded?.Invoke(target);
+            }
         }
 
         if (hitAnything && cameraFollow != null)

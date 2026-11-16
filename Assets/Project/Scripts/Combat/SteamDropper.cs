@@ -5,21 +5,25 @@ using UnityEngine;
 // SteamDropper  (Scripts/Combat)
 // -----------------------------------------------------------------------------
 // WHAT IT DOES
-//   When an enemy is knocked off the arena, steam drops burst out of it and
-//   arc through the air to land on the platform, around the spot where the
-//   enemy went flying (not on the very rim: they land a little inside, so
-//   Tusk can grab them without falling).
+//   Makes an enemy drop steam for Tusk, in two situations:
 //
-//   How it knows: it remembers the last place the enemy stood on the floor.
-//   Once the enemy is clearly below that spot (Fall Depth) and not touching
-//   the floor, it counts as fallen and the drops are released, once.
+//   1. WHEN IT IS HIT: a small steam drop pops out of it every time it is hit.
+//      It holds a fraction of the steam the enemy just lost, and lands close to
+//      the enemy, where Tusk's magnet pulls it in. Fighting keeps her topped
+//      up, which rewards playing aggressively.
+//
+//   2. WHEN IT IS KNOCKED OFF THE ARENA: bigger drops burst out of it and arc
+//      through the air to land on the platform around the spot where it left
+//      (not on the very rim, so Tusk can grab them without falling).
+//      How it knows: it remembers the last place the enemy stood on the floor.
+//      Once the enemy is clearly below that spot (Fall Depth) and not touching
+//      the floor, it counts as fallen and the drops are released, once.
 //
 // PUT IT ON   Every enemy that should drop steam (needs a CharacterController).
 // SLOT        Drop Prefab: your steam drop model (for example the running dust
 //             model turned into a prefab). It can be any model:
 //               - its colliders are switched off automatically,
 //               - a SteamPickup is added automatically if it has none.
-// TUNING      How many drops, how much steam each, where and how they land.
 // =============================================================================
 [RequireComponent(typeof(CharacterController))]
 public class SteamDropper : MonoBehaviour
@@ -27,11 +31,11 @@ public class SteamDropper : MonoBehaviour
     [Header("Drops")]
     [Tooltip("Your steam drop model, as a prefab.")]
     [SerializeField] private GameObject dropPrefab;
-    [SerializeField] private int dropCount = 3;
-    [Tooltip("Steam each drop gives to Tusk.")]
-    [SerializeField] private float steamPerDrop = 10f;
 
-    [Header("Where They Land")]
+    [Header("Knocked Off The Arena")]
+    [SerializeField] private int dropCount = 3;
+    [Tooltip("Steam each of these drops gives to Tusk.")]
+    [SerializeField] private float steamPerDrop = 10f;
     [Tooltip("Drops land within about this distance of the spot where the " +
              "enemy left the platform.")]
     [SerializeField] private float scatterRadius = 3f;
@@ -39,21 +43,33 @@ public class SteamDropper : MonoBehaviour
     [SerializeField] private float edgeMargin = 1.2f;
     [Tooltip("Drops stay at least this far from each other.")]
     [SerializeField] private float minSpacing = 1.2f;
-    [Tooltip("Layers that count as floor. Everything is fine: Tusk and " +
-             "enemies are ignored automatically.")]
-    [SerializeField] private LayerMask groundLayers = ~0;
+    [Tooltip("The enemy must be this far below the last floor it touched.")]
+    [SerializeField] private float fallDepth = 2.5f;
+
+    [Header("When It Is Hit")]
+    [Tooltip("ON: every hit makes a small steam drop pop out of the enemy.")]
+    [SerializeField] private bool dropWhenHit = true;
+    [Tooltip("The drop holds this fraction of the steam the enemy just lost " +
+             "(0.3 = 30%). Raise it to make fighting give more steam.")]
+    [Range(0f, 1f)]
+    [SerializeField] private float hitDropFraction = 0.3f;
+    [Tooltip("A hit drop lands within this distance of the enemy (meters).")]
+    [SerializeField] private float hitDropScatter = 1.5f;
+    [Tooltip("Size of a hit drop compared to a normal drop (1 = same size).")]
+    [SerializeField] private float hitDropScale = 0.6f;
 
     [Header("Flight")]
-    [Tooltip("Seconds the drops take to fly to their landing spot.")]
+    [Tooltip("Seconds the big drops take to fly to their landing spot.")]
     [SerializeField] private float flightTime = 0.9f;
-    [Tooltip("How high the arc goes.")]
+    [Tooltip("How high the big drops' arc goes.")]
     [SerializeField] private float arcHeight = 3f;
     [Tooltip("How high above the floor the drops hover once landed.")]
     [SerializeField] private float hoverHeight = 0.7f;
 
-    [Header("When It Counts As Fallen")]
-    [Tooltip("The enemy must be this far below the last floor it touched.")]
-    [SerializeField] private float fallDepth = 2.5f;
+    [Header("Floor")]
+    [Tooltip("Layers that count as floor. Everything is fine: Tusk and " +
+             "enemies are ignored automatically.")]
+    [SerializeField] private LayerMask groundLayers = ~0;
 
     // Landing spots must be at about the same height as where it stood.
     private const float MaxFloorHeightDifference = 1.5f;
@@ -62,6 +78,7 @@ public class SteamDropper : MonoBehaviour
     private readonly List<Vector3> chosenSpots = new List<Vector3>();
 
     private CharacterController controller;
+    private SteamKnockback knockback;
     private Vector3 lastGroundedPosition;
     private bool hasStoodOnFloor;
     private bool released;
@@ -69,6 +86,18 @@ public class SteamDropper : MonoBehaviour
     private void Awake()
     {
         controller = GetComponent<CharacterController>();
+    }
+
+    private void OnEnable()
+    {
+        if (TryGetComponent(out knockback))
+            knockback.HitDetailed += OnHit;
+    }
+
+    private void OnDisable()
+    {
+        if (knockback != null)
+            knockback.HitDetailed -= OnHit;
     }
 
     private void Update()
@@ -89,6 +118,46 @@ public class SteamDropper : MonoBehaviour
             ReleaseDrops();
     }
 
+    // ------------------------------------------------------------------
+    // Drops when hit
+    // ------------------------------------------------------------------
+
+    private void OnHit(Vector3 pushDirection, float steamLost)
+    {
+        if (!dropWhenHit || dropPrefab == null)
+            return;
+
+        float amount = steamLost * hitDropFraction;
+
+        if (amount <= 0.01f)
+            return;
+
+        // A hit that sends the enemy flying still drops its steam near the
+        // floor where it stood.
+        Vector3 center =
+            (controller.isGrounded || !hasStoodOnFloor)
+                ? transform.position
+                : lastGroundedPosition;
+
+        chosenSpots.Clear();
+
+        Vector3 landing = FindLandingSpot(center, hitDropScatter, false);
+        Vector3 start = transform.position + Vector3.up * 0.8f;
+
+        SpawnDrop(
+            start,
+            landing + Vector3.up * hoverHeight,
+            amount,
+            hitDropScale,
+            flightTime * 0.6f,
+            arcHeight * 0.5f
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // Drops when knocked off
+    // ------------------------------------------------------------------
+
     private void ReleaseDrops()
     {
         released = true;
@@ -105,16 +174,32 @@ public class SteamDropper : MonoBehaviour
 
         for (int i = 0; i < dropCount; i++)
         {
-            Vector3 landing = FindLandingSpot();
+            Vector3 landing = FindLandingSpot(lastGroundedPosition, scatterRadius, true);
             chosenSpots.Add(landing);
 
-            SpawnDrop(start, landing + Vector3.up * hoverHeight);
+            SpawnDrop(
+                start,
+                landing + Vector3.up * hoverHeight,
+                steamPerDrop,
+                1f,
+                flightTime,
+                arcHeight
+            );
         }
     }
 
-    private void SpawnDrop(Vector3 start, Vector3 landing)
+    private void SpawnDrop(
+        Vector3 start,
+        Vector3 landing,
+        float amount,
+        float scale,
+        float duration,
+        float arc)
     {
         GameObject drop = Instantiate(dropPrefab, start, Quaternion.identity);
+
+        if (!Mathf.Approximately(scale, 1f))
+            drop.transform.localScale *= scale;
 
         // A solid collider on a drop would block Tusk. Pickups don't need any.
         foreach (Collider c in drop.GetComponentsInChildren<Collider>())
@@ -123,55 +208,58 @@ public class SteamDropper : MonoBehaviour
         if (!drop.TryGetComponent(out SteamPickup pickup))
             pickup = drop.AddComponent<SteamPickup>();
 
-        pickup.Launch(start, landing, flightTime, arcHeight, steamPerDrop);
+        pickup.Launch(start, landing, duration, arc, amount);
     }
 
-    // Picks a random spot near where the enemy left the platform that has
-    // floor under it, is not on the rim, and is not too close to other drops.
-    private Vector3 FindLandingSpot()
+    // ------------------------------------------------------------------
+    // Finding a place to land
+    // ------------------------------------------------------------------
+
+    // Picks a random spot near 'center' that has floor under it, is not too
+    // close to other drops, and (optionally) is not on the rim of the platform.
+    private Vector3 FindLandingSpot(Vector3 center, float radius, bool keepAwayFromRim)
     {
         const int attempts = 24;
 
         for (int attempt = 0; attempt < attempts; attempt++)
         {
-            // Start close to the exit point, then search a bit wider.
-            float radius = scatterRadius *
+            // Start close to the center, then search a bit wider.
+            float searchRadius = radius *
                 Mathf.Lerp(0.4f, 1.4f, attempt / (float)(attempts - 1));
 
-            Vector2 circle = Random.insideUnitCircle * radius;
+            Vector2 circle = Random.insideUnitCircle * searchRadius;
 
-            Vector3 candidate = lastGroundedPosition +
-                new Vector3(circle.x, 0f, circle.y);
+            Vector3 candidate = center + new Vector3(circle.x, 0f, circle.y);
 
-            if (!TryGetFloor(candidate, out Vector3 floor))
+            if (!TryGetFloor(candidate, center.y, out Vector3 floor))
                 continue;
 
-            if (Mathf.Abs(floor.y - lastGroundedPosition.y) >
-                MaxFloorHeightDifference)
-            {
+            if (Mathf.Abs(floor.y - center.y) > MaxFloorHeightDifference)
                 continue;
-            }
 
-            if (!HasFloorAround(floor) || IsTooCloseToOtherDrops(floor))
+            if (keepAwayFromRim && !HasFloorAround(floor, center.y))
+                continue;
+
+            if (IsTooCloseToOtherDrops(floor))
                 continue;
 
             return floor;
         }
 
-        // Nothing good found: use the exit point itself.
-        if (TryGetFloor(lastGroundedPosition, out Vector3 fallback))
+        // Nothing good found: use the center itself.
+        if (TryGetFloor(center, center.y, out Vector3 fallback))
             return fallback;
 
-        return lastGroundedPosition;
+        return center;
     }
 
     // Floor on all four sides at Edge Margin = not on the rim.
-    private bool HasFloorAround(Vector3 floor)
+    private bool HasFloorAround(Vector3 floor, float referenceY)
     {
-        return TryGetFloor(floor + Vector3.forward * edgeMargin, out _) &&
-               TryGetFloor(floor + Vector3.back * edgeMargin, out _) &&
-               TryGetFloor(floor + Vector3.left * edgeMargin, out _) &&
-               TryGetFloor(floor + Vector3.right * edgeMargin, out _);
+        return TryGetFloor(floor + Vector3.forward * edgeMargin, referenceY, out _) &&
+               TryGetFloor(floor + Vector3.back * edgeMargin, referenceY, out _) &&
+               TryGetFloor(floor + Vector3.left * edgeMargin, referenceY, out _) &&
+               TryGetFloor(floor + Vector3.right * edgeMargin, referenceY, out _);
     }
 
     private bool IsTooCloseToOtherDrops(Vector3 spot)
@@ -186,10 +274,9 @@ public class SteamDropper : MonoBehaviour
     }
 
     // Looks straight down at this spot for walkable floor.
-    private bool TryGetFloor(Vector3 spot, out Vector3 floorPoint)
+    private bool TryGetFloor(Vector3 spot, float referenceY, out Vector3 floorPoint)
     {
-        Vector3 origin = new Vector3(
-            spot.x, lastGroundedPosition.y + 3f, spot.z);
+        Vector3 origin = new Vector3(spot.x, referenceY + 3f, spot.z);
 
         int count = Physics.RaycastNonAlloc(
             origin,

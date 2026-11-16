@@ -13,6 +13,8 @@ using UnityEngine;
 //   The push uses the steam BEFORE the hit, so the hit that empties a tank
 //   does not launch it, but the next one does (the 'empty = lethal' rule).
 //   The push distance is set in METERS in the Inspector.
+//   An enemy's WEIGHT (EnemyStats) scales the push and the stun through
+//   SetWeightMultipliers(). HitDetailed tells listeners how much steam was lost.
 //
 // PUT IT ON   Tusk_Player and every enemy (needs SteamTank on the same object).
 // MOVERS      The object's own movement script must add PushVelocity to its
@@ -61,11 +63,19 @@ public class SteamKnockback : MonoBehaviour
     private float stunEndTime;
     private bool stunEnabled = true;
 
+    // Set by EnemyStats (the enemy's weight). 1 = no change.
+    private float weightPushFull = 1f;
+    private float weightPushEmpty = 1f;
+    private float weightStun = 1f;
+
     /// <summary>Current sideways push. The mover adds this to its movement.</summary>
     public Vector3 PushVelocity { get; private set; }
 
     /// <summary>Raised when a hit lands. Direction is the push direction.</summary>
     public event Action<Vector3> Hit;
+
+    /// <summary>Raised when a hit lands: (push direction, steam the target lost).</summary>
+    public event Action<Vector3, float> HitDetailed;
 
     /// <summary>True while recovering from a hit (cannot move or attack).</summary>
     public bool IsStunned => stunEnabled && Time.time < stunEndTime;
@@ -108,9 +118,11 @@ public class SteamKnockback : MonoBehaviour
             lightnessBySteam.Evaluate(tank.Normalized)
         );
 
+        // The weight makes heavy enemies fly less, with a full tank and (more
+        // so) with an empty one, so they are not an instant ring-out.
         float distance = Mathf.Lerp(
-            pushDistanceFull,
-            pushDistanceEmpty,
+            pushDistanceFull * weightPushFull,
+            pushDistanceEmpty * weightPushEmpty,
             lightness
         );
 
@@ -120,16 +132,17 @@ public class SteamKnockback : MonoBehaviour
 
         // Lighter targets stay stunned longer.
         float stun = stunEnabled
-            ? Mathf.Lerp(stunDurationFull, stunDurationEmpty, lightness)
+            ? Mathf.Lerp(stunDurationFull, stunDurationEmpty, lightness) * weightStun
             : 0f;
 
         stunEndTime = Time.time + stun;
 
-        tank.Drain(steamDamage);
+        float steamLost = tank.Drain(steamDamage);
 
         // Protected while stunned, plus a short grace period after.
         nextHitTime = Time.time + stun + invulnerableTime;
         Hit?.Invoke(direction);
+        HitDetailed?.Invoke(direction, steamLost);
 
         return true;
     }
@@ -149,6 +162,16 @@ public class SteamKnockback : MonoBehaviour
         PushVelocity = Vector3.zero;
         pendingUpward = 0f;
         stunEndTime = 0f;
+    }
+
+    /// <summary>
+    /// Used by EnemyStats: scales the push (full tank / empty tank) and the stun.
+    /// </summary>
+    public void SetWeightMultipliers(float pushFull, float pushEmpty, float stun)
+    {
+        weightPushFull = Mathf.Max(0f, pushFull);
+        weightPushEmpty = Mathf.Max(0f, pushEmpty);
+        weightStun = Mathf.Max(0f, stun);
     }
 
     /// <summary>For things that should never be stunned (the test dummy).</summary>

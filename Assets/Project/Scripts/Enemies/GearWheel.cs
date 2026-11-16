@@ -38,6 +38,8 @@ public enum GearWheelState
 // PUT IT ON   An empty parent object with a model child (the gear), plus:
 //             Character Controller, SteamTank, SteamKnockback, GearWheel.
 //             Remove any other collider (the Character Controller is the body).
+// WEIGHT      Small / Medium / Heavy is set on EnemyStats (added automatically).
+//             It multiplies the wheel's steam, damage and how far it is pushed.
 // TARGET      Left empty = it finds Tusk by itself.
 //
 // ANIMATION (optional, none needed yet)
@@ -63,6 +65,7 @@ public enum GearWheelState
 [RequireComponent(typeof(CharacterController))]
 [RequireComponent(typeof(SteamTank))]
 [RequireComponent(typeof(SteamKnockback))]
+[RequireComponent(typeof(EnemyStats))]
 public class GearWheel : MonoBehaviour
 {
     [Header("Target")]
@@ -197,6 +200,7 @@ public class GearWheel : MonoBehaviour
     private CharacterController controller;
     private SteamTank tank;
     private SteamKnockback knockback;
+    private EnemyStats stats;
     private SteamKnockback targetKnockback;
     private float targetRadius = 0.5f;
 
@@ -259,6 +263,7 @@ public class GearWheel : MonoBehaviour
         controller = GetComponent<CharacterController>();
         tank = GetComponent<SteamTank>();
         knockback = GetComponent<SteamKnockback>();
+        stats = GetComponent<EnemyStats>();
 
         startPosition = transform.position;
 
@@ -536,7 +541,12 @@ public class GearWheel : MonoBehaviour
             return false;
 
         if (targetKnockback != null)
-            targetKnockback.ApplyHit(chargeDirection, steamDamage);
+        {
+            // A heavier wheel hits harder (EnemyStats).
+            float damage = steamDamage * (stats != null ? stats.DamageMultiplier : 1f);
+
+            targetKnockback.ApplyHit(chargeDirection, damage);
+        }
 
         return true;
     }

@@ -99,15 +99,15 @@ public class SteamTank : MonoBehaviour
 
     /// <summary>
     /// Sets the size of the tank (and the starting steam). Used to give new
-    /// enemies a default tank size.
+    /// enemies a default tank size. With fillToMax the tank also becomes full.
     /// </summary>
-    public void SetMaxSteam(float value)
+    public void SetMaxSteam(float value, bool fillToMax = false)
     {
         maxSteam = Mathf.Max(1f, value);
         startingSteam = maxSteam;
 
         if (Application.isPlaying)
-            SetCurrent(Current);
+            SetCurrent(fillToMax ? maxSteam : Current);
     }
 
     // Right-click the component title in the Inspector to use this.
